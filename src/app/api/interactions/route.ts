@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyDiscordRequest } from '@/lib/discord';
-import { generateEmbedding } from '@/lib/openai';
+import { verifyDiscordRequest, sendDM, formatArticlesMessage } from '@/lib/discord';
+import { generateEmbedding, cosineSimilarity } from '@/lib/openai';
 import {
   getUser,
   createUser,
@@ -8,6 +8,9 @@ import {
   getUserThemes,
   addTheme,
   removeTheme,
+  getTodayArticles,
+  getDeliveredArticleIds,
+  markAsDelivered,
 } from '@/lib/supabase';
 import {
   InteractionType,
@@ -15,6 +18,7 @@ import {
   type DiscordInteraction,
   type DiscordInteractionOption,
 } from '@/types';
+import type { Article, Theme, ScoredArticle } from '@/types';
 
 export async function POST(request: NextRequest) {
   const body = await request.text();
@@ -54,6 +58,9 @@ export async function POST(request: NextRequest) {
 
         case 'settings':
           return await handleSettings(discordId, options);
+
+        case 'deliver':
+          return await handleDeliver(discordId);
 
         default:
           return jsonResponse('不明なコマンドです。');
@@ -202,4 +209,103 @@ async function handleSettings(discordId: string, options?: DiscordInteractionOpt
     default:
       return jsonResponse('不明なサブコマンドです。');
   }
+}
+
+async function handleDeliver(discordId: string) {
+  const user = await getUser(discordId);
+  if (!user) {
+    return jsonResponse('先に `/register` でユーザー登録を行ってください。');
+  }
+
+  if (!user.is_active) {
+    return jsonResponse('配信が停止中です。`/settings toggle` で有効化してください。');
+  }
+
+  // Get user themes
+  const themes = await getUserThemes(user.id);
+  if (themes.length === 0) {
+    return jsonResponse('テーマが登録されていません。`/theme add` でテーマを追加してください。');
+  }
+
+  // Get today's articles
+  const articles = await getTodayArticles();
+  if (articles.length === 0) {
+    return jsonResponse('配信可能な記事がありません。`/fetch` で記事を取得してください。');
+  }
+
+  // Get already delivered article IDs
+  const deliveredIds = await getDeliveredArticleIds(user.id);
+
+  // Filter out delivered articles
+  const undeliveredArticles = articles.filter((a) => !deliveredIds.has(a.id));
+  if (undeliveredArticles.length === 0) {
+    return jsonResponse('未配信の記事がありません。すべて配信済みです。');
+  }
+
+  // Score and match articles
+  const scoredArticles = matchArticles(themes, undeliveredArticles, user.article_count);
+
+  if (scoredArticles.length === 0) {
+    return jsonResponse('マッチする記事が見つかりませんでした。');
+  }
+
+  // Format and send message
+  const message = formatArticlesMessage(
+    scoredArticles.map((a) => ({
+      title: a.title,
+      url: a.url,
+      source: a.source,
+      matched_theme: a.matched_theme,
+    }))
+  );
+
+  const sent = await sendDM(user.discord_id, message);
+
+  if (sent) {
+    // Mark as delivered
+    await markAsDelivered(
+      user.id,
+      scoredArticles.map((a) => a.id)
+    );
+    return jsonResponse(`✅ ${scoredArticles.length}件の記事を配信しました！`);
+  } else {
+    return jsonResponse('❌ DMの送信に失敗しました。DMを受信できる設定になっているか確認してください。');
+  }
+}
+
+function matchArticles(
+  themes: Theme[],
+  articles: Article[],
+  limit: number
+): ScoredArticle[] {
+  const scored: ScoredArticle[] = [];
+
+  for (const article of articles) {
+    let maxScore = 0;
+    let matchedTheme = '';
+
+    for (const theme of themes) {
+      const themeEmbedding =
+        typeof theme.embedding === 'string' ? JSON.parse(theme.embedding) : theme.embedding;
+
+      const score = cosineSimilarity(article.embedding, themeEmbedding);
+
+      if (score > maxScore) {
+        maxScore = score;
+        matchedTheme = theme.name;
+      }
+    }
+
+    // Only include articles with reasonable similarity
+    if (maxScore > 0.3) {
+      scored.push({
+        ...article,
+        score: maxScore,
+        matched_theme: matchedTheme,
+      });
+    }
+  }
+
+  // Sort by score descending and take top N
+  return scored.sort((a, b) => b.score - a.score).slice(0, limit);
 }

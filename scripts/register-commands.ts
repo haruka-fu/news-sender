@@ -1,4 +1,9 @@
-import '@dotenvx/dotenvx/config';
+import dotenv from 'dotenv';
+import { resolve } from 'path';
+
+// Load .env.local first, then .env as fallback
+dotenv.config({ path: resolve(process.cwd(), '.env.local') });
+dotenv.config({ path: resolve(process.cwd(), '.env') });
 
 const DISCORD_APPLICATION_ID = process.env.DISCORD_APPLICATION_ID;
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
@@ -80,6 +85,10 @@ const commands = [
         type: 1,
       },
     ],
+  },
+  {
+    name: 'deliver',
+    description: '記事を手動で配信します（自分のみ）',
   },
 ];
 
