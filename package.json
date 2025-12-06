@@ -14,7 +14,6 @@
     "preinstall": "npx npm-force-resolutions || true"
   },
   "dependencies": {
-    "@dotenvx/dotenvx": "^1.51.1",
     "@supabase/supabase-js": "^2.39.0",
     "discord-interactions": "^3.4.0",
     "next": "^16.0.7",
