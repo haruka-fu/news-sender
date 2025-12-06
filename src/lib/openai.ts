@@ -16,10 +16,26 @@ export class OpenAIRateLimitError extends Error {
   }
 }
 
+export class OpenAITimeoutError extends Error {
+  constructor() {
+    super('OpenAI API request timed out. Please check your network connection.');
+    this.name = 'OpenAITimeoutError';
+  }
+}
+
+export class OpenAIConnectionError extends Error {
+  constructor() {
+    super('Failed to connect to OpenAI API. Please check your network or firewall settings.');
+    this.name = 'OpenAIConnectionError';
+  }
+}
+
 function getOpenAIClient(): OpenAI {
   if (!openaiClient) {
     openaiClient = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,
+      timeout: 30000, // 30 seconds timeout
+      maxRetries: 2, // Retry twice on transient errors
     });
   }
   return openaiClient;
@@ -27,6 +43,12 @@ function getOpenAIClient(): OpenAI {
 
 function handleOpenAIError(error: unknown): never {
   if (error instanceof OpenAI.APIError) {
+    console.error('[OpenAI] API Error:', {
+      status: error.status,
+      code: error.code,
+      message: error.message,
+    });
+
     if (error.status === 429) {
       if (error.code === 'insufficient_quota') {
         throw new OpenAIQuotaExceededError();
@@ -34,6 +56,25 @@ function handleOpenAIError(error: unknown): never {
       throw new OpenAIRateLimitError();
     }
   }
+
+  if (error instanceof Error) {
+    // Handle timeout errors
+    if (error.name === 'AbortError' || error.message.includes('timeout')) {
+      console.error('[OpenAI] Request timeout');
+      throw new OpenAITimeoutError();
+    }
+
+    // Handle connection errors
+    if (error.message.includes('ECONNREFUSED') ||
+        error.message.includes('ENOTFOUND') ||
+        error.message.includes('network') ||
+        error.message.includes('fetch failed')) {
+      console.error('[OpenAI] Connection error:', error.message);
+      throw new OpenAIConnectionError();
+    }
+  }
+
+  console.error('[OpenAI] Unexpected error:', error);
   throw error;
 }
 

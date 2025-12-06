@@ -2,6 +2,22 @@ import { verifyKey } from 'discord-interactions';
 
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN!;
 const DISCORD_PUBLIC_KEY = process.env.DISCORD_PUBLIC_KEY!;
+const DISCORD_API_TIMEOUT = 10000; // 10 seconds
+
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number = DISCORD_API_TIMEOUT): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    return response;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
 
 export async function verifyDiscordRequest(
   body: string,
@@ -15,8 +31,10 @@ export async function verifyDiscordRequest(
 
 export async function sendDM(userId: string, content: string): Promise<boolean> {
   try {
+    console.log(`[Discord] Attempting to send DM to user: ${userId}`);
+
     // Create DM channel
-    const dmChannelRes = await fetch('https://discord.com/api/v10/users/@me/channels', {
+    const dmChannelRes = await fetchWithTimeout('https://discord.com/api/v10/users/@me/channels', {
       method: 'POST',
       headers: {
         Authorization: `Bot ${DISCORD_BOT_TOKEN}`,
@@ -26,14 +44,16 @@ export async function sendDM(userId: string, content: string): Promise<boolean> 
     });
 
     if (!dmChannelRes.ok) {
-      console.error('Failed to create DM channel:', await dmChannelRes.text());
+      const errorText = await dmChannelRes.text();
+      console.error(`[Discord] Failed to create DM channel (Status: ${dmChannelRes.status}):`, errorText);
       return false;
     }
 
     const dmChannel = await dmChannelRes.json();
+    console.log(`[Discord] DM channel created: ${dmChannel.id}`);
 
     // Send message
-    const messageRes = await fetch(
+    const messageRes = await fetchWithTimeout(
       `https://discord.com/api/v10/channels/${dmChannel.id}/messages`,
       {
         method: 'POST',
@@ -46,13 +66,19 @@ export async function sendDM(userId: string, content: string): Promise<boolean> 
     );
 
     if (!messageRes.ok) {
-      console.error('Failed to send DM:', await messageRes.text());
+      const errorText = await messageRes.text();
+      console.error(`[Discord] Failed to send DM (Status: ${messageRes.status}):`, errorText);
       return false;
     }
 
+    console.log(`[Discord] DM sent successfully to user: ${userId}`);
     return true;
   } catch (error) {
-    console.error('Error sending DM:', error);
+    if (error instanceof Error && error.name === 'AbortError') {
+      console.error('[Discord] Request timeout - firewall or network issue');
+      return false;
+    }
+    console.error('[Discord] Error sending DM:', error);
     return false;
   }
 }

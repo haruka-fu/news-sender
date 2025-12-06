@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyDiscordRequest, sendDM, formatArticlesMessage } from '@/lib/discord';
-import { generateEmbedding, cosineSimilarity } from '@/lib/openai';
+import {
+  generateEmbedding,
+  cosineSimilarity,
+  OpenAIQuotaExceededError,
+  OpenAIRateLimitError,
+  OpenAITimeoutError,
+  OpenAIConnectionError,
+} from '@/lib/openai';
 import {
   getUser,
   createUser,
@@ -123,10 +130,25 @@ async function handleTheme(discordId: string, options?: DiscordInteractionOption
       }
 
       // Generate embedding
-      const embedding = await generateEmbedding(themeName);
-      await addTheme(user.id, themeName, embedding);
-
-      return jsonResponse(`テーマ「${themeName}」を追加しました！✅`);
+      try {
+        const embedding = await generateEmbedding(themeName);
+        await addTheme(user.id, themeName, embedding);
+        return jsonResponse(`テーマ「${themeName}」を追加しました！✅`);
+      } catch (error) {
+        if (error instanceof OpenAIQuotaExceededError) {
+          return jsonResponse('❌ OpenAI APIの使用量制限に達しました。管理者に連絡してください。');
+        }
+        if (error instanceof OpenAIRateLimitError) {
+          return jsonResponse('⏳ アクセスが集中しています。しばらく経ってから再度お試しください。');
+        }
+        if (error instanceof OpenAITimeoutError) {
+          return jsonResponse('⏱️ リクエストがタイムアウトしました。ネットワーク接続を確認してください。');
+        }
+        if (error instanceof OpenAIConnectionError) {
+          return jsonResponse('🔌 OpenAI APIへの接続に失敗しました。ネットワークまたはファイアウォール設定を確認してください。');
+        }
+        throw error;
+      }
     }
 
     case 'list': {
