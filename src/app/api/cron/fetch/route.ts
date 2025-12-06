@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchAllArticles } from '@/lib/sources';
-import { generateEmbeddings } from '@/lib/openai';
+import { generateEmbeddings, OpenAIQuotaExceededError, OpenAIRateLimitError } from '@/lib/openai';
 import { getExistingUrls, saveArticles } from '@/lib/supabase';
 
 export async function GET(request: NextRequest) {
@@ -43,6 +43,9 @@ export async function GET(request: NextRequest) {
       published_at: string | null;
     }> = [];
 
+    let quotaExceeded = false;
+    let rateLimited = false;
+
     for (let i = 0; i < newArticles.length; i += BATCH_SIZE) {
       const batch = newArticles.slice(i, i + BATCH_SIZE);
       const texts = batch.map((a) => `${a.title} ${a.description || ''}`);
@@ -61,9 +64,32 @@ export async function GET(request: NextRequest) {
           });
         }
       } catch (error) {
+        if (error instanceof OpenAIQuotaExceededError) {
+          console.error('OpenAI quota exceeded, stopping embedding generation');
+          quotaExceeded = true;
+          break;
+        }
+        if (error instanceof OpenAIRateLimitError) {
+          console.error('OpenAI rate limit hit, stopping embedding generation');
+          rateLimited = true;
+          break;
+        }
         console.error(`Error generating embeddings for batch ${i}:`, error);
-        // Continue with next batch
       }
+    }
+
+    if (quotaExceeded) {
+      return NextResponse.json(
+        { error: 'OpenAI quota exceeded. Please check your billing details.' },
+        { status: 503 }
+      );
+    }
+
+    if (rateLimited) {
+      return NextResponse.json(
+        { error: 'OpenAI rate limit reached. Please try again later.' },
+        { status: 429 }
+      );
     }
 
     // Save to database

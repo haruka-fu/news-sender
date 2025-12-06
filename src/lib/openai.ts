@@ -2,6 +2,20 @@ import OpenAI from 'openai';
 
 let openaiClient: OpenAI | null = null;
 
+export class OpenAIQuotaExceededError extends Error {
+  constructor() {
+    super('OpenAI API quota exceeded. Please check your plan and billing details.');
+    this.name = 'OpenAIQuotaExceededError';
+  }
+}
+
+export class OpenAIRateLimitError extends Error {
+  constructor() {
+    super('OpenAI API rate limit reached. Please try again later.');
+    this.name = 'OpenAIRateLimitError';
+  }
+}
+
 function getOpenAIClient(): OpenAI {
   if (!openaiClient) {
     openaiClient = new OpenAI({
@@ -11,26 +25,44 @@ function getOpenAIClient(): OpenAI {
   return openaiClient;
 }
 
+function handleOpenAIError(error: unknown): never {
+  if (error instanceof OpenAI.APIError) {
+    if (error.status === 429) {
+      if (error.code === 'insufficient_quota') {
+        throw new OpenAIQuotaExceededError();
+      }
+      throw new OpenAIRateLimitError();
+    }
+  }
+  throw error;
+}
+
 export async function generateEmbedding(text: string): Promise<number[]> {
   const openai = getOpenAIClient();
-  const response = await openai.embeddings.create({
-    model: 'text-embedding-3-small',
-    input: text,
-  });
-
-  return response.data[0].embedding;
+  try {
+    const response = await openai.embeddings.create({
+      model: 'text-embedding-3-small',
+      input: text,
+    });
+    return response.data[0].embedding;
+  } catch (error) {
+    handleOpenAIError(error);
+  }
 }
 
 export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
   if (texts.length === 0) return [];
 
   const openai = getOpenAIClient();
-  const response = await openai.embeddings.create({
-    model: 'text-embedding-3-small',
-    input: texts,
-  });
-
-  return response.data.map((d) => d.embedding);
+  try {
+    const response = await openai.embeddings.create({
+      model: 'text-embedding-3-small',
+      input: texts,
+    });
+    return response.data.map((d) => d.embedding);
+  } catch (error) {
+    handleOpenAIError(error);
+  }
 }
 
 export function cosineSimilarity(a: number[], b: number[]): number {

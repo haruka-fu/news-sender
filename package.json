@@ -14,13 +14,13 @@
     "preinstall": "npx npm-force-resolutions || true"
   },
   "dependencies": {
+    "@extractus/feed-extractor": "^7.1.7",
     "@supabase/supabase-js": "^2.39.0",
     "discord-interactions": "^3.4.0",
     "next": "^16.0.7",
     "openai": "^4.24.0",
     "react": "^19.2.1",
-    "react-dom": "^19.2.1",
-    "rss-parser": "^3.13.0"
+    "react-dom": "^19.2.1"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
