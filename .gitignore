@@ -39,3 +39,4 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .claude/settings.local.json
+.claude/hooks/notify-complete.ps1
