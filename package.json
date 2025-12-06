@@ -1,0 +1,35 @@
+{
+  "name": "news-sender",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "register-commands": "npx tsx scripts/register-commands.ts",
+    "audit": "npm audit --audit-level=high",
+    "audit:fix": "npm audit fix",
+    "deps:check": "npm outdated",
+    "preinstall": "npx npm-force-resolutions || true"
+  },
+  "dependencies": {
+    "@dotenvx/dotenvx": "^1.51.1",
+    "@supabase/supabase-js": "^2.39.0",
+    "discord-interactions": "^3.4.0",
+    "next": "^16.0.7",
+    "openai": "^4.24.0",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "rss-parser": "^3.13.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "eslint": "^9.39.1",
+    "eslint-config-next": "^16.0.7",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.0"
+  }
+}
