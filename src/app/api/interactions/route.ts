@@ -19,6 +19,7 @@ import {
   getDeliveredArticleIds,
   markAsDelivered,
 } from '@/lib/supabase';
+import { fetchAndSaveArticles } from '@/lib/articles';
 import {
   InteractionType,
   InteractionResponseType,
@@ -249,10 +250,15 @@ async function handleDeliver(discordId: string) {
     return jsonResponse('テーマが登録されていません。`/theme add` でテーマを追加してください。');
   }
 
+  // Fetch new articles first
+  console.log('Fetching new articles for manual delivery...');
+  const fetchResult = await fetchAndSaveArticles();
+  console.log(`Fetch result: ${fetchResult.saved} new articles saved`);
+
   // Get today's articles
   const articles = await getTodayArticles();
   if (articles.length === 0) {
-    return jsonResponse('配信可能な記事がありません。`/fetch` で記事を取得してください。');
+    return jsonResponse('配信可能な記事がありません。記事の取得に失敗した可能性があります。');
   }
 
   // Get already delivered article IDs
