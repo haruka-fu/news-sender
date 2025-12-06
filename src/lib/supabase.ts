@@ -6,10 +6,10 @@ let supabaseClient: SupabaseClient | null = null;
 function getSupabase(): SupabaseClient {
   if (!supabaseClient) {
     const supabaseUrl = process.env.SUPABASE_URL;
-    const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+    const supabaseKey = process.env.SUPABASE_SECRET_KEYS;
 
     if (!supabaseUrl || !supabaseKey) {
-      throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_KEY');
+      throw new Error('Missing SUPABASE_URL or SUPABASE_SECRET_KEYS');
     }
 
     supabaseClient = createClient(supabaseUrl, supabaseKey);
