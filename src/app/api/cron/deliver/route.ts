@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cosineSimilarity } from '@/lib/openai';
 import { sendDM, formatArticlesMessage } from '@/lib/discord';
+import { fetchAndSaveArticles } from '@/lib/articles';
 import {
   getActiveUsers,
   getUserThemes,
@@ -18,6 +19,11 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    // First, fetch new articles
+    console.log('Fetching new articles before delivery...');
+    const fetchResult = await fetchAndSaveArticles();
+    console.log(`Fetch result: ${fetchResult.saved} new articles saved`);
+
     console.log('Starting article delivery...');
 
     // Get active users
