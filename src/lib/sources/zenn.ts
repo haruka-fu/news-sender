@@ -1,18 +1,19 @@
-import { extract } from '@extractus/feed-extractor';
+import Parser from 'rss-parser';
 import type { RawArticle } from '@/types';
 
 const ZENN_RSS_URL = 'https://zenn.dev/feed';
 
 export async function fetchZennArticles(): Promise<RawArticle[]> {
   try {
-    const feed = await extract(ZENN_RSS_URL);
+    const parser = new Parser();
+    const feed = await parser.parseURL(ZENN_RSS_URL);
 
-    return (feed.entries || []).map((item) => ({
+    return (feed.items || []).map((item) => ({
       url: item.link || '',
       title: item.title || '',
-      description: item.description?.slice(0, 500) || null,
+      description: item.contentSnippet?.slice(0, 500) || item.content?.slice(0, 500) || null,
       source: 'zenn' as const,
-      published_at: item.published ? new Date(item.published).toISOString() : null,
+      published_at: item.isoDate || (item.pubDate ? new Date(item.pubDate).toISOString() : null),
     })).filter((article) => article.url && article.title);
   } catch (error) {
     console.error('Error fetching Zenn articles:', error);
