@@ -250,50 +250,26 @@ async function handleDeliver(discordId: string, interaction: DiscordInteraction)
     return jsonResponse('テーマが登録されていません。`/theme add` でテーマを追加してください。');
   }
 
-  // Respond immediately
-  const response = jsonResponse('📬 記事を配信しています...');
-
-  // Execute delivery in background and send new message
+  // Trigger async delivery endpoint (runs in separate process)
   if (interaction.channel_id) {
-    deliverAndNotify(interaction.channel_id, discordId, user, themes).catch((error) => {
-      console.error('Background delivery error:', error);
+    const baseUrl = process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : 'http://localhost:3000';
+    const deliveryUrl = `${baseUrl}/api/deliver-async`;
+
+    fetch(deliveryUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: discordId,
+        channelId: interaction.channel_id,
+      }),
+    }).catch((error) => {
+      console.error('Failed to trigger async delivery:', error);
     });
   }
 
-  return response;
-}
-
-async function deliverAndNotify(
-  channelId: string,
-  discordId: string,
-  user: { id: string; discord_id: string; article_count: number },
-  themes: Theme[]
-) {
-  try {
-    const result = await deliverToUser(user, themes);
-    await sendChannelMessage(channelId, `<@${discordId}> ${result}`);
-  } catch (error) {
-    console.error('Delivery error:', error);
-    await sendChannelMessage(channelId, `<@${discordId}> ❌ 配信中にエラーが発生しました。`);
-  }
-}
-
-async function sendChannelMessage(channelId: string, content: string) {
-  const url = `https://discord.com/api/v10/channels/${channelId}/messages`;
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ content }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`Failed to send channel message: ${response.status}`, errorText);
-  }
+  return jsonResponse('📬 記事を配信しています...');
 }
 
 async function deliverToUser(
