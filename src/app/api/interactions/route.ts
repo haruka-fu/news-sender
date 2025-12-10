@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
           return await handleSettings(discordId, options);
 
         case 'deliver':
-          return await handleDeliver(discordId, interaction);
+          return await handleDeliver(discordId);
 
         default:
           return jsonResponse('不明なコマンドです。');
@@ -234,7 +234,7 @@ async function handleSettings(discordId: string, options?: DiscordInteractionOpt
   }
 }
 
-async function handleDeliver(discordId: string, interaction: DiscordInteraction) {
+async function handleDeliver(discordId: string) {
   const user = await getUser(discordId);
   if (!user) {
     return jsonResponse('先に `/register` でユーザー登録を行ってください。');
@@ -250,26 +250,14 @@ async function handleDeliver(discordId: string, interaction: DiscordInteraction)
     return jsonResponse('テーマが登録されていません。`/theme add` でテーマを追加してください。');
   }
 
-  // Trigger async delivery endpoint (runs in separate process)
-  if (interaction.channel_id) {
-    const baseUrl = process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : 'http://localhost:3000';
-    const deliveryUrl = `${baseUrl}/api/deliver-async`;
-
-    fetch(deliveryUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userId: discordId,
-        channelId: interaction.channel_id,
-      }),
-    }).catch((error) => {
-      console.error('Failed to trigger async delivery:', error);
-    });
+  // Execute delivery and wait for completion
+  try {
+    const result = await deliverToUser(user, themes);
+    return jsonResponse(result);
+  } catch (error) {
+    console.error('Delivery error:', error);
+    return jsonResponse('❌ 配信中にエラーが発生しました。');
   }
-
-  return jsonResponse('📬 記事を配信しています...');
 }
 
 async function deliverToUser(
