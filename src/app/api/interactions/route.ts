@@ -250,54 +250,75 @@ async function handleDeliver(discordId: string) {
     return jsonResponse('テーマが登録されていません。`/theme add` でテーマを追加してください。');
   }
 
-  // Fetch new articles first
-  console.log('Fetching new articles for manual delivery...');
-  const fetchResult = await fetchAndSaveArticles();
-  console.log(`Fetch result: ${fetchResult.saved} new articles saved`);
+  // Run background processing (don't await)
+  deliverInBackground(user, themes).catch((error) => {
+    console.error('Background delivery error:', error);
+  });
 
-  // Get today's articles
-  const articles = await getTodayArticles();
-  if (articles.length === 0) {
-    return jsonResponse('配信可能な記事がありません。記事の取得に失敗した可能性があります。');
-  }
+  // Respond immediately (within 3 seconds)
+  return jsonResponse('📬 記事を取得中です...配信が完了したらDMでお知らせします！');
+}
 
-  // Get already delivered article IDs
-  const deliveredIds = await getDeliveredArticleIds(user.id);
+async function deliverInBackground(
+  user: { id: string; discord_id: string; article_count: number },
+  themes: Theme[]
+) {
+  try {
+    // Fetch new articles first
+    console.log('Fetching new articles for manual delivery...');
+    const fetchResult = await fetchAndSaveArticles();
+    console.log(`Fetch result: ${fetchResult.saved} new articles saved`);
 
-  // Filter out delivered articles
-  const undeliveredArticles = articles.filter((a) => !deliveredIds.has(a.id));
-  if (undeliveredArticles.length === 0) {
-    return jsonResponse('未配信の記事がありません。すべて配信済みです。');
-  }
+    // Get today's articles
+    const articles = await getTodayArticles();
+    if (articles.length === 0) {
+      await sendDM(user.discord_id, '❌ 配信可能な記事がありません。');
+      return;
+    }
 
-  // Score and match articles
-  const scoredArticles = matchArticles(themes, undeliveredArticles, user.article_count);
+    // Get already delivered article IDs
+    const deliveredIds = await getDeliveredArticleIds(user.id);
 
-  if (scoredArticles.length === 0) {
-    return jsonResponse('マッチする記事が見つかりませんでした。');
-  }
+    // Filter out delivered articles
+    const undeliveredArticles = articles.filter((a) => !deliveredIds.has(a.id));
+    if (undeliveredArticles.length === 0) {
+      await sendDM(user.discord_id, '✅ 未配信の記事がありません。すべて配信済みです。');
+      return;
+    }
 
-  // Format and send message
-  const message = formatArticlesMessage(
-    scoredArticles.map((a) => ({
-      title: a.title,
-      url: a.url,
-      source: a.source,
-      matched_theme: a.matched_theme,
-    }))
-  );
+    // Score and match articles
+    const scoredArticles = matchArticles(themes, undeliveredArticles, user.article_count);
 
-  const sent = await sendDM(user.discord_id, message);
+    if (scoredArticles.length === 0) {
+      await sendDM(user.discord_id, '🔍 マッチする記事が見つかりませんでした。');
+      return;
+    }
 
-  if (sent) {
-    // Mark as delivered
-    await markAsDelivered(
-      user.id,
-      scoredArticles.map((a) => a.id)
+    // Format and send message
+    const message = formatArticlesMessage(
+      scoredArticles.map((a) => ({
+        title: a.title,
+        url: a.url,
+        source: a.source,
+        matched_theme: a.matched_theme,
+      }))
     );
-    return jsonResponse(`✅ ${scoredArticles.length}件の記事を配信しました！`);
-  } else {
-    return jsonResponse('❌ DMの送信に失敗しました。DMを受信できる設定になっているか確認してください。');
+
+    const sent = await sendDM(user.discord_id, message);
+
+    if (sent) {
+      // Mark as delivered
+      await markAsDelivered(
+        user.id,
+        scoredArticles.map((a) => a.id)
+      );
+      console.log(`Delivered ${scoredArticles.length} articles to user ${user.discord_id}`);
+    } else {
+      console.error(`Failed to send DM to user ${user.discord_id}`);
+    }
+  } catch (error) {
+    console.error('Error in deliverInBackground:', error);
+    await sendDM(user.discord_id, '❌ 配信中にエラーが発生しました。');
   }
 }
 
