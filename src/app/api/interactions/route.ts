@@ -264,27 +264,38 @@ async function deliverInBackground(
   themes: Theme[]
 ) {
   try {
+    console.log(`[Deliver] Starting background delivery for user ${user.discord_id}`);
+
     // Get today's articles (fetched by cron job)
     const articles = await getTodayArticles();
+    console.log(`[Deliver] Found ${articles.length} articles for today`);
+
     if (articles.length === 0) {
+      console.log('[Deliver] No articles available, sending error DM');
       await sendDM(user.discord_id, '❌ 配信可能な記事がありません。\n記事は毎朝9時に自動取得されます。');
       return;
     }
 
     // Get already delivered article IDs
     const deliveredIds = await getDeliveredArticleIds(user.id);
+    console.log(`[Deliver] User has ${deliveredIds.size} delivered articles`);
 
     // Filter out delivered articles
     const undeliveredArticles = articles.filter((a) => !deliveredIds.has(a.id));
+    console.log(`[Deliver] ${undeliveredArticles.length} undelivered articles`);
+
     if (undeliveredArticles.length === 0) {
+      console.log('[Deliver] All articles already delivered');
       await sendDM(user.discord_id, '✅ 未配信の記事がありません。すべて配信済みです。');
       return;
     }
 
     // Score and match articles
     const scoredArticles = matchArticles(themes, undeliveredArticles, user.article_count);
+    console.log(`[Deliver] Matched ${scoredArticles.length} articles (threshold: 0.3)`);
 
     if (scoredArticles.length === 0) {
+      console.log('[Deliver] No matching articles found');
       await sendDM(user.discord_id, '🔍 マッチする記事が見つかりませんでした。');
       return;
     }
@@ -299,6 +310,7 @@ async function deliverInBackground(
       }))
     );
 
+    console.log(`[Deliver] Sending DM with ${scoredArticles.length} articles`);
     const sent = await sendDM(user.discord_id, message);
 
     if (sent) {
@@ -307,13 +319,17 @@ async function deliverInBackground(
         user.id,
         scoredArticles.map((a) => a.id)
       );
-      console.log(`Delivered ${scoredArticles.length} articles to user ${user.discord_id}`);
+      console.log(`[Deliver] ✅ Successfully delivered ${scoredArticles.length} articles to user ${user.discord_id}`);
     } else {
-      console.error(`Failed to send DM to user ${user.discord_id}`);
+      console.error(`[Deliver] ❌ Failed to send DM to user ${user.discord_id}`);
     }
   } catch (error) {
-    console.error('Error in deliverInBackground:', error);
-    await sendDM(user.discord_id, '❌ 配信中にエラーが発生しました。');
+    console.error('[Deliver] Error in deliverInBackground:', error);
+    try {
+      await sendDM(user.discord_id, '❌ 配信中にエラーが発生しました。');
+    } catch (dmError) {
+      console.error('[Deliver] Failed to send error DM:', dmError);
+    }
   }
 }
 
