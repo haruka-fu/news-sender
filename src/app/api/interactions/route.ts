@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
           return await handleSettings(discordId, options);
 
         case 'deliver':
-          return await handleDeliver(discordId);
+          return await handleDeliver(discordId, interaction);
 
         default:
           return jsonResponse('不明なコマンドです。');
@@ -234,7 +234,7 @@ async function handleSettings(discordId: string, options?: DiscordInteractionOpt
   }
 }
 
-async function handleDeliver(discordId: string) {
+async function handleDeliver(discordId: string, interaction: DiscordInteraction) {
   const user = await getUser(discordId);
   if (!user) {
     return jsonResponse('先に `/register` でユーザー登録を行ってください。');
@@ -250,13 +250,46 @@ async function handleDeliver(discordId: string) {
     return jsonResponse('テーマが登録されていません。`/theme add` でテーマを追加してください。');
   }
 
-  // Execute delivery and wait for completion
+  // Respond with deferred message (gives us 15 minutes)
+  const deferredResponse = NextResponse.json({
+    type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
+  });
+
+  // Execute delivery in background and send follow-up
+  deliverAndFollowUp(interaction.token, user, themes).catch((error) => {
+    console.error('Background delivery error:', error);
+  });
+
+  return deferredResponse;
+}
+
+async function deliverAndFollowUp(
+  interactionToken: string,
+  user: { id: string; discord_id: string; article_count: number },
+  themes: Theme[]
+) {
   try {
     const result = await deliverToUser(user, themes);
-    return jsonResponse(result);
+    await sendFollowUpMessage(interactionToken, result);
   } catch (error) {
     console.error('Delivery error:', error);
-    return jsonResponse('❌ 配信中にエラーが発生しました。');
+    await sendFollowUpMessage(interactionToken, '❌ 配信中にエラーが発生しました。');
+  }
+}
+
+async function sendFollowUpMessage(interactionToken: string, content: string) {
+  const url = `https://discord.com/api/v10/webhooks/${process.env.DISCORD_APPLICATION_ID}/${interactionToken}`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ content }),
+  });
+
+  if (!response.ok) {
+    console.error(`Failed to send follow-up message: ${response.status}`);
   }
 }
 
