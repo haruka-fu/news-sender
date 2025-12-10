@@ -125,17 +125,33 @@ export async function saveArticles(
     embedding: number[];
     published_at: string | null;
   }>
-): Promise<void> {
-  if (articles.length === 0) return;
+): Promise<number> {
+  if (articles.length === 0) return 0;
 
-  const { error } = await getSupabase().from('articles').insert(
-    articles.map((a) => ({
-      ...a,
-      embedding: JSON.stringify(a.embedding),
-    }))
-  );
+  // Insert articles one by one to handle duplicates gracefully
+  let savedCount = 0;
+  for (const article of articles) {
+    const { error } = await getSupabase().from('articles').insert({
+      ...article,
+      embedding: JSON.stringify(article.embedding),
+    });
 
-  if (error) throw error;
+    if (error) {
+      // Skip duplicate entries (error code 23505)
+      if (error.code === '23505') {
+        console.log(`Skipping duplicate article: ${article.url}`);
+        continue;
+      }
+      // For other errors, log but continue
+      console.error(`Error saving article ${article.url}:`, error);
+      continue;
+    }
+
+    savedCount++;
+  }
+
+  console.log(`Successfully saved ${savedCount}/${articles.length} articles`);
+  return savedCount;
 }
 
 export async function getTodayArticles(): Promise<Article[]> {

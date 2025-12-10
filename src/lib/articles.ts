@@ -103,16 +103,16 @@ export async function fetchAndSaveArticles(): Promise<FetchResult> {
     }
 
     // Save to database
+    let actualSaved = 0;
     if (articlesToSave.length > 0) {
-      await saveArticles(articlesToSave);
-      console.log(`Saved ${articlesToSave.length} articles to database`);
+      actualSaved = await saveArticles(articlesToSave);
     }
 
     return {
       success: true,
       fetched: rawArticles.length,
       new: newArticles.length,
-      saved: articlesToSave.length,
+      saved: actualSaved,
     };
   } catch (error) {
     console.error('Error in fetchAndSaveArticles:', error);
