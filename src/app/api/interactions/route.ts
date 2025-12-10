@@ -250,46 +250,49 @@ async function handleDeliver(discordId: string, interaction: DiscordInteraction)
     return jsonResponse('テーマが登録されていません。`/theme add` でテーマを追加してください。');
   }
 
-  // Respond with deferred message (gives us 15 minutes)
-  const deferredResponse = NextResponse.json({
-    type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
-  });
+  // Respond immediately
+  const response = jsonResponse('📬 記事を配信しています...');
 
-  // Execute delivery in background and send follow-up
-  deliverAndFollowUp(interaction.token, user, themes).catch((error) => {
-    console.error('Background delivery error:', error);
-  });
+  // Execute delivery in background and send new message
+  if (interaction.channel_id) {
+    deliverAndNotify(interaction.channel_id, discordId, user, themes).catch((error) => {
+      console.error('Background delivery error:', error);
+    });
+  }
 
-  return deferredResponse;
+  return response;
 }
 
-async function deliverAndFollowUp(
-  interactionToken: string,
+async function deliverAndNotify(
+  channelId: string,
+  discordId: string,
   user: { id: string; discord_id: string; article_count: number },
   themes: Theme[]
 ) {
   try {
     const result = await deliverToUser(user, themes);
-    await sendFollowUpMessage(interactionToken, result);
+    await sendChannelMessage(channelId, `<@${discordId}> ${result}`);
   } catch (error) {
     console.error('Delivery error:', error);
-    await sendFollowUpMessage(interactionToken, '❌ 配信中にエラーが発生しました。');
+    await sendChannelMessage(channelId, `<@${discordId}> ❌ 配信中にエラーが発生しました。`);
   }
 }
 
-async function sendFollowUpMessage(interactionToken: string, content: string) {
-  const url = `https://discord.com/api/v10/webhooks/${process.env.DISCORD_APPLICATION_ID}/${interactionToken}`;
+async function sendChannelMessage(channelId: string, content: string) {
+  const url = `https://discord.com/api/v10/channels/${channelId}/messages`;
 
   const response = await fetch(url, {
     method: 'POST',
     headers: {
+      Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ content }),
   });
 
   if (!response.ok) {
-    console.error(`Failed to send follow-up message: ${response.status}`);
+    const errorText = await response.text();
+    console.error(`Failed to send channel message: ${response.status}`, errorText);
   }
 }
 

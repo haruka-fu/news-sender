@@ -54,6 +54,7 @@ export interface DiscordInteraction {
   type: number;
   application_id: string;
   token: string;
+  channel_id?: string;
   data?: {
     id: string;
     name: string;
