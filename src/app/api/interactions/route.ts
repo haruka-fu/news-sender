@@ -264,15 +264,10 @@ async function deliverInBackground(
   themes: Theme[]
 ) {
   try {
-    // Fetch new articles first
-    console.log('Fetching new articles for manual delivery...');
-    const fetchResult = await fetchAndSaveArticles();
-    console.log(`Fetch result: ${fetchResult.saved} new articles saved`);
-
-    // Get today's articles
+    // Get today's articles (fetched by cron job)
     const articles = await getTodayArticles();
     if (articles.length === 0) {
-      await sendDM(user.discord_id, '❌ 配信可能な記事がありません。');
+      await sendDM(user.discord_id, '❌ 配信可能な記事がありません。\n記事は毎朝9時に自動取得されます。');
       return;
     }
 
