@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
           return await handleSettings(discordId, options);
 
         case 'deliver':
-          return await handleDeliver(discordId);
+          return await handleDeliver(discordId, interaction);
 
         default:
           return jsonResponse('不明なコマンドです。');
@@ -234,7 +234,7 @@ async function handleSettings(discordId: string, options?: DiscordInteractionOpt
   }
 }
 
-async function handleDeliver(discordId: string) {
+async function handleDeliver(discordId: string, interaction: DiscordInteraction) {
   const user = await getUser(discordId);
   if (!user) {
     return jsonResponse('先に `/register` でユーザー登録を行ってください。');
@@ -250,13 +250,48 @@ async function handleDeliver(discordId: string) {
     return jsonResponse('テーマが登録されていません。`/theme add` でテーマを追加してください。');
   }
 
-  // Execute delivery and wait for completion
+  // Start background delivery (don't await)
+  if (interaction.channel_id) {
+    deliverAndNotify(interaction.channel_id, discordId, user, themes);
+  }
+
+  // Respond immediately
+  return jsonResponse('📬 DMに記事を送信します...');
+}
+
+async function deliverAndNotify(
+  channelId: string,
+  userId: string,
+  user: { id: string; discord_id: string; article_count: number },
+  themes: Theme[]
+) {
   try {
     const result = await deliverToUser(user, themes);
-    return jsonResponse(result);
+    // Send channel message with result
+    await sendChannelMessage(channelId, `<@${userId}> ${result}`);
   } catch (error) {
     console.error('Delivery error:', error);
-    return jsonResponse('❌ 配信中にエラーが発生しました。');
+    await sendChannelMessage(channelId, `<@${userId}> ❌ 配信中にエラーが発生しました。`);
+  }
+}
+
+async function sendChannelMessage(channelId: string, content: string) {
+  const url = `https://discord.com/api/v10/channels/${channelId}/messages`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bot ${process.env.DISCORD_BOT_TOKEN}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ content }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`[Discord] Failed to send channel message (${response.status}):`, errorText);
+  } else {
+    console.log(`[Discord] Channel message sent successfully`);
   }
 }
 
@@ -353,7 +388,7 @@ function matchArticles(
     }
 
     // Only include articles with reasonable similarity
-    if (maxScore > 0.3) {
+    if (maxScore > 0.25) {
       scored.push({
         ...article,
         score: maxScore,
